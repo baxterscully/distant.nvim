@@ -241,7 +241,6 @@ end
 --- @field prompt string
 --- @field choices string[]
 --- @field max_choices? number
-
 --- @param opts PromptChoicesOpts
 --- @return number|nil #Index of choice selected, or nil if quit
 local function prompt_choices(opts)
@@ -250,36 +249,66 @@ local function prompt_choices(opts)
     local choices = opts.choices
     local max_choices = opts.max_choices or 999
 
-    local choices_list = { {} }
-    for i, choice in ipairs(choices) do
-        -- If current selection is maxed out in size, start a new one
-        if #choices_list[#choices_list] == max_choices then
-            table.insert(choices_list, {})
-        end
+    if #choices <= max_choices then
+        local result = nil
+        vim.ui.select(choices, {
+            prompt = prompt,
+            format_item = function(item, idx)
+                return string.format("%d. %s", idx, item)
+            end,
+        }, function(_, idx)
+            result = idx
+        end)
+        return result
+    else
+        local current_page = 1
+        local total_pages = math.ceil(#choices / max_choices)
 
-        table.insert(
-            choices_list[#choices_list],
-            string.format('%s. %s', ((i - 1) % max_choices) + 1, choice)
-        )
+        while current_page <= total_pages do
+            local start_idx = (current_page - 1) * max_choices + 1
+            local end_idx = math.min(current_page * max_choices, #choices)
+            local current_choices = {}
+
+            for i = start_idx, end_idx do
+                current_choices[i - start_idx + 1] = choices[i]
+            end
+
+            if current_page < total_pages then
+                current_choices[#current_choices + 1] = "[Show more]"
+            end
+
+            local result = nil
+            vim.ui.select(current_choices, {
+                prompt = prompt .. string.format(" (Page %d/%d)", current_page, total_pages),
+                format_item = function(item, idx)
+                    if item == "[Show more]" then
+                        return item
+                    else
+                        return string.format("%d. %s", (idx - 1) + (start_idx - 1), item)
+                    end
+                end,
+            }, function(choice, idx)
+                if choice == "[Show more]" then
+                    current_page = current_page + 1
+                elseif idx then
+                    result = idx + (start_idx - 1) - 1  -- Adjust for 0-based indexing
+                    current_page = total_pages + 1  -- Exit the loop
+                else
+                    current_page = total_pages + 1  -- Exit the loop
+                end
+            end)
+
+            -- If a selection was made or cancelled, return it
+            if current_page > total_pages and result then
+                return result
+            elseif current_page > total_pages then
+                return nil
+            end
+
+        end
     end
 
-    for i, args in ipairs(choices_list) do
-        local not_last = i < #choices_list
-        local size = #args
-        table.insert(args, 1, prompt)
-        if not_last then
-            table.insert(args, tostring(max_choices + 1) .. '. [Show me more]')
-        end
-
-        local choice = vim.fn.inputlist(args)
-        if choice > 0 and choice <= size then
-            return choice + (max_choices * (i - 1))
-        elseif choice == size + 1 and not_last then
-            -- Continue our loop with the next set
-        else
-            break
-        end
-    end
+    return nil
 end
 
 -------------------------------------------------------------------------------
