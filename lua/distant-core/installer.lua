@@ -250,16 +250,17 @@ local function prompt_choices(opts)
     local max_choices = opts.max_choices or 999
 
     if #choices <= max_choices then
-        local result = nil
+        local selected_idx = nil
         vim.ui.select(choices, {
             prompt = prompt,
             format_item = function(item, idx)
+                idx = idx or 0
                 return string.format("%d. %s", idx, item)
             end,
         }, function(_, idx)
-            result = idx
+            selected_idx = idx
         end)
-        return result
+        return selected_idx
     else
         local current_page = 1
         local total_pages = math.ceil(#choices / max_choices)
@@ -270,17 +271,18 @@ local function prompt_choices(opts)
             local current_choices = {}
 
             for i = start_idx, end_idx do
-                current_choices[i - start_idx + 1] = choices[i]
+                table.insert(current_choices, choices[i])
             end
 
             if current_page < total_pages then
-                current_choices[#current_choices + 1] = "[Show more]"
+                table.insert(current_choices, '[Show more]')
             end
 
-            local result = nil
+            local selected_idx = nil
             vim.ui.select(current_choices, {
                 prompt = prompt .. string.format(" (Page %d/%d)", current_page, total_pages),
                 format_item = function(item, idx)
+                    idx = idx or 0
                     if item == "[Show more]" then
                         return item
                     else
@@ -291,7 +293,7 @@ local function prompt_choices(opts)
                 if choice == "[Show more]" then
                     current_page = current_page + 1
                 elseif idx then
-                    result = idx + (start_idx - 1) - 1  -- Adjust for 0-based indexing
+                    selected_idx = idx + (start_idx - 1) - 1  -- Adjust for 0-based indexing
                     current_page = total_pages + 1  -- Exit the loop
                 else
                     current_page = total_pages + 1  -- Exit the loop
@@ -299,8 +301,8 @@ local function prompt_choices(opts)
             end)
 
             -- If a selection was made or cancelled, return it
-            if current_page > total_pages and result then
-                return result
+            if current_page > total_pages and selected_idx then
+                return selected_idx
             elseif current_page > total_pages then
                 return nil
             end
